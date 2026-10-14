@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -28,8 +28,19 @@ next_id: int = 1
 
 # -----------3. 接口（REST 增删改查，全 async）-------------
 @app.get("/todos", response_model=list[Todo])
-async def list_todos():
-    return todos
+async def list_todos(
+    skip: int = Query(0, ge=0, description="跳过前 N 条，分页用"),
+    limit: int = Query(10, ge=1, le=100, description="最多返回 N 条，默认 10"),
+    q: str | None = Query(None, min_length=1, description="按标题关键词模糊搜索"),
+):
+    # 1. 先按关键词过滤（不区分大小写）
+    result = todos
+    if q:
+        kw = q.lower()
+        result = [t for t in result if kw in t.title.lower()]
+    # 2. 再分页
+    result = result[skip : skip + limit]
+    return result
 
 
 @app.post("/todos", response_model=Todo, status_code=201)
