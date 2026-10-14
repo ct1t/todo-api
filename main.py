@@ -5,6 +5,12 @@ from pydantic import BaseModel, Field
 app = FastAPI(title="Todo API", version="0.2.0")
 
 
+# ---------- 0. 健康检查（负载均衡/容器常用）----------
+@app.get("/health", tags=["meta"])
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 # ---------- 1. 数据模型（Pydantic）----------
 class TodoCreate(BaseModel):
     title: str = Field(min_length=1, max_length=100, description="标题，非空，最长100字")
