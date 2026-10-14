@@ -1,88 +1,64 @@
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from fastapi import FastAPI,HTTPException,Query
+from pydantic import BaseModel,Field
 
-app = FastAPI(title="Todo API", version="0.2.0")
-
-
-# ---------- 0. 健康检查（负载均衡/容器常用）----------
-@app.get("/health", tags=["meta"])
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
-
+app = FastAPI()
 
 # ---------- 1. 数据模型（Pydantic）----------
 class TodoCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=100, description="标题，非空，最长100字")
-    done: bool = False
-
+    #标题： 必填、非空、最长100字
+    title : str = Field(min_length = 1)
+    #完成状态，默认未完成
+    done : bool = False
 
 class Todo(TodoCreate):
-    id: int
+    #继承上面两个字段，再加id
+    id : int
 
+# ---------- 2. 内存存储（暂用列表，重启会清空）----------
+todos : list[Todo] = []
+next_id = 1
 
-# ---------- 2. 内存存储（重启清空）----------
-todos: list[Todo] = []
-next_id: int = 1
-
-
-# -----------3. 接口（REST 增删改查，全 async）-------------
-@app.get("/todos", response_model=list[Todo])
-async def list_todos(
-    skip: int = Query(0, ge=0, description="跳过前 N 条，分页用"),
-    limit: int = Query(10, ge=1, le=100, description="最多返回 N 条，默认 10"),
-    q: str | None = Query(None, min_length=1, description="按标题关键词模糊搜索"),
-):
-    # 1. 先按关键词过滤（不区分大小写）
+# -----------3. 接口（REST 增删改查）-------------
+#查全部
+@app.get("/todos",response_model = list[Todo])
+def list_todos(skip: int = Query(0,ge=0) ,limit: int = Query(10,ge=1,le=100), q : str | None = None):
     result = todos
     if q:
-        kw = q.lower()
-        result = [t for t in result if kw in t.title.lower()]
-    # 2. 再分页
-    result = result[skip : skip + limit]
-    return result
+        result = [t for t in result if q in t.title]
+    return result[skip: skip+limit]
 
-
-@app.post("/todos", response_model=Todo, status_code=201)
-async def create_todo(item: TodoCreate):
+#新增
+@app.post("/todos",response_model = Todo,status_code = 201)
+def create_todo(item: TodoCreate):
     global next_id
-    todo = Todo(id=next_id, **item.model_dump())
+    todo = Todo(id = next_id, **item.model_dump())
     todos.append(todo)
     next_id += 1
     return todo
 
-
-@app.get("/todos/{todo_id}", response_model=Todo)
-async def get_todo(todo_id: int):
+#查单条
+@app.get("/todos/{todo_id}",response_model = Todo)
+def get_todo(todo_id : int):
     for todo in todos:
         if todo.id == todo_id:
             return todo
-    raise HTTPException(status_code=404, detail="待办不存在")
+    raise HTTPException(status_code=404,detail="待办不存在")
 
-
-@app.put("/todos/{todo_id}", response_model=Todo)
-async def update_todo(todo_id: int, item: TodoCreate):
+#修改
+@app.put("/todos/{todo_id}",response_model = Todo)
+def update_todo(todo_id : int ,item : TodoCreate):
     for todo in todos:
         if todo.id == todo_id:
             todo.title = item.title
             todo.done = item.done
             return todo
-    raise HTTPException(status_code=404, detail="待办不存在")
+    raise HTTPException(status_code = 404 ,detail="待办不存在")
 
-
+#删除
 @app.delete("/todos/{todo_id}", status_code=204)
-async def delete_todo(todo_id: int):
-    for i, todo in enumerate(todos):
+def delete_todo(todo_id : int):
+    for i,todo in enumerate(todos):
         if todo.id == todo_id:
             todos.pop(i)
-            return  # 204 No Content：不返回任何 body
-    raise HTTPException(status_code=404, detail="待办不存在")
-
-
-# ---------- 4. 全局异常处理：未捕获异常统一返回 500 JSON ----------
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"服务器内部错误: {type(exc).__name__}"},
-    )
+            return
+    raise HTTPException(status_code=404,detail="待办不存在")
